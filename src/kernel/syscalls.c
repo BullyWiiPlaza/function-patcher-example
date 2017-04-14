@@ -3,6 +3,8 @@
 #include "common/common.h"
 #include "dynamic_libs/os_functions.h"
 #include "syscalls.h"
+#include "../common/common.h"
+#include "../dynamic_libs/os_functions.h"
 
 extern void my_PrepareTitle_hook(void);
 
