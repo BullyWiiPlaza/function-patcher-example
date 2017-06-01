@@ -19,23 +19,22 @@
 
 #include "../utils/logger.h"
 
-DECL(int, FSInit, void) {
+declareFunctionHook(int, FSInit, void) {
 	log_print("FSInit called\n");
 	return real_FSInit();
 }
 
-DECL(int, FSOpenDir, void *pClient, void *pCmd, const char *path, int *handle, int error) {
+declareFunctionHook(int, FSOpenDir, void *pClient, void *pCmd, const char *path, int *handle, int error) {
 	log_print("FSOpenDir called\n");
 	return real_FSOpenDir(pClient, pCmd, path, handle, error);
 }
 
-hooks_magic_t method_hooks_fs[] __attribute__((section(".data"))) = {
-		MAKE_MAGIC(FSInit, LIB_CORE_INIT, STATIC_FUNCTION),
-		MAKE_MAGIC(FSOpenDir, LIB_CORE_INIT, STATIC_FUNCTION),
+FunctionHook method_hooks_fs[] __attribute__((section(".data"))) = {
+		makeFunctionHook(FSInit, LIB_CORE_INIT, STATIC_FUNCTION),
+		makeFunctionHook(FSOpenDir, LIB_CORE_INIT, STATIC_FUNCTION),
 };
 
-u32 method_hooks_size_fs __attribute__((section(".data"))) = sizeof(method_hooks_fs) / sizeof(hooks_magic_t);
+u32 method_hooks_size_fs __attribute__((section(".data"))) = sizeof(method_hooks_fs) / sizeof(FunctionHook);
 
 //! buffer to store our instructions needed for our replacements
-volatile unsigned int method_calls_fs[sizeof(method_hooks_fs) / sizeof(hooks_magic_t) *
-									  FUNCTION_PATCHER_METHOD_STORE_SIZE] __attribute__((section(".data")));
+volatile unsigned int method_calls_fs[sizeof(method_hooks_fs) / sizeof(FunctionHook) * FUNCTION_PATCHER_METHOD_STORE_SIZE] __attribute__((section(".data")));

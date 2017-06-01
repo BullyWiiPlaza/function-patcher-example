@@ -16,7 +16,6 @@
  ****************************************************************************/
 
 #ifndef FUNCTION_PATCHER_EXAMPLE_GX2_FUNCTION_PATCHER_H
-#define FUNCTION_PATCHER_EXAMPLE_GX2_FUNCTION_PATCHER_H
 
 #ifdef __cplusplus
 extern "C" {
@@ -24,7 +23,7 @@ extern "C" {
 
 #include "../utils/function_patcher.h"
 
-extern hooks_magic_t method_hooks_gx2[];
+extern FunctionHook method_hooks_gx2[];
 extern u32 method_hooks_size_gx2;
 extern volatile unsigned int method_calls_gx2[];
 

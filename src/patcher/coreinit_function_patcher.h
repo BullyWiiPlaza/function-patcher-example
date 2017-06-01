@@ -24,7 +24,7 @@ extern "C" {
 
 #include "../utils/function_patcher.h"
 
-extern hooks_magic_t method_hooks_coreinit[];
+extern FunctionHook method_hooks_coreinit[];
 extern u32 method_hooks_size_coreinit;
 extern volatile unsigned int method_calls_coreinit[];
 

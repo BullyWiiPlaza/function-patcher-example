@@ -25,7 +25,9 @@ extern "C" {
 #endif
 
 #include <gctypes.h>
-#include "../common/common.h"
+#include "../common/common.h" // OS_FIRMWARE
+
+// Library handles
 #include "../dynamic_libs/aoc_functions.h"
 #include "../dynamic_libs/ax_functions.h"
 #include "../dynamic_libs/fs_functions.h"
@@ -38,38 +40,59 @@ extern "C" {
 #include "../dynamic_libs/acp_functions.h"
 #include "../dynamic_libs/syshid_functions.h"
 
-//Orignal code by Chadderz.
-#define DECL(res, name, ...) \
-        res (* real_ ## name)(__VA_ARGS__) __attribute__((section(".data"))); \
-        res my_ ## name(__VA_ARGS__)
+enum Library {
+	LIB_CORE_INIT,
+	LIB_NSYSNET,
+	LIB_GX2,
+	LIB_AOC,
+	LIB_AX,
+	LIB_FS,
+	LIB_OS,
+	LIB_PADSCORE,
+	LIB_SOCKET,
+	LIB_SYS,
+	LIB_VPAD,
+	LIB_NN_ACP,
+	LIB_SYSHID,
+	LIB_VPADBASE
+};
+
+enum FunctionTypes {
+	STATIC_FUNCTION,
+	DYNAMIC_FUNCTION
+};
+
+// Original code by Chadderz
+#define declareFunctionHook(returnType, functionName, ...) \
+        returnType (* real_ ## functionName)(__VA_ARGS__) __attribute__((section(".data"))); \
+        returnType my_ ## functionName(__VA_ARGS__)
+
+#define makeFunctionHook(functionName, library, functionType) { (unsigned int) my_ ## functionName, (unsigned int) &real_ ## functionName, library, # functionName,0,0,functionType,0}
 
 #define FUNCTION_PATCHER_METHOD_STORE_SIZE  7
 
 typedef struct {
-	const unsigned int replaceAddr;
+	const unsigned int replaceAddress;
 	const unsigned int replaceCall;
 	const unsigned int library;
 	const char functionName[50];
-	unsigned int realAddr;
+	unsigned int realAddress;
 	unsigned int restoreInstruction;
 	unsigned char functionType;
 	unsigned char alreadyPatched;
-} hooks_magic_t;
+} FunctionHook;
 
-void PatchInvidualMethodHooks(hooks_magic_t hook_information[], int hook_information_size,
-							  volatile unsigned int dynamic_method_calls[]);
+void patchIndividualMethodHooks(FunctionHook *hook_information, int hook_information_size,
+								volatile unsigned int *dynamic_method_calls);
 
-void RestoreInvidualInstructions(hooks_magic_t hook_information[], int hook_information_size);
+void restoreIndividualInstructions(FunctionHook *hook_information, int hook_information_size);
 
-unsigned int GetAddressOfFunction(const char *functionName, unsigned int library);
+unsigned int getFunctionAddress(unsigned int library, const char *functionName);
 
-int isDynamicFunction(unsigned int physicalAddress);
-
-//Orignal code by Chadderz.
-#define MAKE_MAGIC(x, lib, functionType) { (unsigned int) my_ ## x, (unsigned int) &real_ ## x, lib, # x,0,0,functionType,0}
+bool isDynamicFunction(unsigned int physicalAddress);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* _FS_H */
+#endif

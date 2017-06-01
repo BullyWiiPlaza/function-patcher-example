@@ -20,7 +20,7 @@ extern "C" int Menu_Main(void) {
 	//!*******************************************************************
 	//!                   Initialize function pointers                   *
 	//!*******************************************************************
-	//! aquire every rpl we want to patch
+	//! Acquire every RPL we want to patch
 
 	InitOSFunctionPointers();
 	InitSocketFunctionPointers(); //For logging
@@ -39,17 +39,15 @@ extern "C" int Menu_Main(void) {
 	//Reset everything when were going back to the Mii Maker
 	if (strlen(cosAppXmlInfoStruct.rpx_name) > 0 && strcasecmp("ffl_app.rpx", cosAppXmlInfoStruct.rpx_name) == 0) {
 		log_print("Returing to the Homebrew Launcher!\n");
-		deInit();
+		restoreFunctionPatches();
 		return EXIT_SUCCESS;
 	}
-
 
 	//!*******************************************************************
 	//!                        Patching functions                        *
 	//!*******************************************************************
 	log_print("Patching functions\n");
-	ApplyPatches();
-
+	applyFunctionPatches();
 
 	if (strlen(cosAppXmlInfoStruct.rpx_name) > 0 &&
 		strcasecmp("ffl_app.rpx", cosAppXmlInfoStruct.rpx_name) != 0) //Starting the application
@@ -62,26 +60,20 @@ extern "C" int Menu_Main(void) {
 		return EXIT_RELAUNCH_ON_LOAD;
 	}
 
-	deInit();
+	restoreFunctionPatches();
 	return EXIT_SUCCESS;
 }
 
-/*
-    Patching all the functions!!!
-*/
-void ApplyPatches() {
-	PatchInvidualMethodHooks(method_hooks_coreinit, method_hooks_size_coreinit, method_calls_coreinit);
-	PatchInvidualMethodHooks(method_hooks_fs, method_hooks_size_fs, method_calls_fs);
-	PatchInvidualMethodHooks(method_hooks_pad, method_hooks_size_pad, method_calls_pad);
-	PatchInvidualMethodHooks(method_hooks_gx2, method_hooks_size_gx2, method_calls_gx2);
+void applyFunctionPatches() {
+	patchIndividualMethodHooks(method_hooks_coreinit, method_hooks_size_coreinit, method_calls_coreinit);
+	patchIndividualMethodHooks(method_hooks_fs, method_hooks_size_fs, method_calls_fs);
+	patchIndividualMethodHooks(method_hooks_pad, method_hooks_size_pad, method_calls_pad);
+	patchIndividualMethodHooks(method_hooks_gx2, method_hooks_size_gx2, method_calls_gx2);
 }
 
-/*
-    Restoring everything!!
-*/
-void deInit() {
-	RestoreInvidualInstructions(method_hooks_coreinit, method_hooks_size_coreinit);
-	RestoreInvidualInstructions(method_hooks_fs, method_hooks_size_fs);
-	RestoreInvidualInstructions(method_hooks_pad, method_hooks_size_pad);
+void restoreFunctionPatches() {
+	restoreIndividualInstructions(method_hooks_coreinit, method_hooks_size_coreinit);
+	restoreIndividualInstructions(method_hooks_fs, method_hooks_size_fs);
+	restoreIndividualInstructions(method_hooks_pad, method_hooks_size_pad);
 	log_deinit();
 }

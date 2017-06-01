@@ -16,18 +16,10 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  ****************************************************************************/
 
-#include <vector>
-#include <algorithm>
-#include <stdio.h>
-#include <malloc.h>
 #include <string.h>
-#include <gctypes.h>
+#include "../utils/logger.h"
+#include "../kernel/kernel_functions.h"
 #include "function_patcher.h"
-#include "utils/logger.h"
-#include "common/kernel_defs.h"
-#include "kernel/kernel_functions.h"
-#include "logger.h"
-#include "../kernel/syscalls.h"
 
 #define CODE_RW_BASE_OFFSET                             0x00000000
 #define DEBUG_LOG_DYN                                   1
@@ -36,71 +28,69 @@
 * Patches a function that is loaded at the start of each application. Its not required to restore, at least when they are really dynamic.
 * "normal" functions should be patch with the normal patcher. Current Code by Maschell with the help of dimok. Orignal code by Chadderz.
 */
-void PatchInvidualMethodHooks(hooks_magic_t method_hooks[], int hook_information_size,
-							  volatile unsigned int dynamic_method_calls[]) {
+void patchIndividualMethodHooks(FunctionHook *method_hooks, int hook_information_size,
+								volatile unsigned int *dynamic_method_calls) {
 	log_printf("Patching %d given functions\n", hook_information_size);
 	/* Patch branches to it.  */
 	volatile unsigned int *space = &dynamic_method_calls[0];
 
 	int method_hooks_count = hook_information_size;
 
-	u32 skip_instr = 1;
-	u32 my_instr_len = 6;
-	u32 instr_len = my_instr_len + skip_instr;
-	u32 flush_len = 4 * instr_len;
-	for (int i = 0; i < method_hooks_count; i++) {
-		log_printf("Patching %s ...", method_hooks[i].functionName);
-		if (method_hooks[i].functionType == STATIC_FUNCTION && method_hooks[i].alreadyPatched == 1) {
-			if (isDynamicFunction((u32) OSEffectiveToPhysical((void *) method_hooks[i].realAddr))) {
-				log_printf("The function %s is a dynamic function. Please fix that <3\n", method_hooks[i].functionName);
-				method_hooks[i].functionType = DYNAMIC_FUNCTION;
+	u32 skipInstructionLength = 1;
+	u32 myInstructionLength = 6;
+	u32 instructionLength = myInstructionLength + skipInstructionLength;
+	u32 flush_len = 4 * instructionLength;
+	for (int functionIndex = 0; functionIndex < method_hooks_count; functionIndex++) {
+		log_printf("Patching %s ...", method_hooks[functionIndex].functionName);
+		if (method_hooks[functionIndex].functionType == STATIC_FUNCTION &&
+			method_hooks[functionIndex].alreadyPatched == 1) {
+			if (isDynamicFunction((u32) OSEffectiveToPhysical((void *) method_hooks[functionIndex].realAddress))) {
+				log_printf("The function %s is a dynamic function. Please fix that <3\n",
+						   method_hooks[functionIndex].functionName);
+				method_hooks[functionIndex].functionType = DYNAMIC_FUNCTION;
 			} else {
-				log_printf("Skipping %s, its already patched\n", method_hooks[i].functionName);
-				space += instr_len;
+				log_printf("Skipping %s, its already patched\n", method_hooks[functionIndex].functionName);
+				space += instructionLength;
 				continue;
 			}
 		}
 
 		u32 physical = 0;
-		unsigned int repl_addr = method_hooks[i].replaceAddr;
-		unsigned int call_addr = method_hooks[i].replaceCall;
+		unsigned int replaceAddress = method_hooks[functionIndex].replaceAddress;
+		unsigned int callAddress = method_hooks[functionIndex].replaceCall;
 
-		unsigned int real_addr = GetAddressOfFunction(method_hooks[i].functionName, method_hooks[i].library);
+		unsigned int realAddress = getFunctionAddress(method_hooks[functionIndex].library,
+													  method_hooks[functionIndex].functionName);
 
-		if (!real_addr) {
-			log_printf("OSDynLoad_FindExport failed for %s\n", method_hooks[i].functionName);
-			space += instr_len;
+		if (!realAddress) {
+			log_printf("OSDynLoad_FindExport failed for %s\n", method_hooks[functionIndex].functionName);
+			space += instructionLength;
 			continue;
 		}
 
-		if (DEBUG_LOG_DYN)log_printf("%s is located at %08X!\n", method_hooks[i].functionName, real_addr);
+		if (DEBUG_LOG_DYN)log_printf("%s is located at %08X!\n", method_hooks[functionIndex].functionName, realAddress);
 
-		physical = (u32) OSEffectiveToPhysical((void *) real_addr);
+		physical = (u32) OSEffectiveToPhysical((void *) realAddress);
 		if (!physical) {
 			log_printf("Error. Something is wrong with the physical address\n");
-			space += instr_len;
+			space += instructionLength;
 			continue;
 		}
 
-		if (DEBUG_LOG_DYN)log_printf("%s physical is located at %08X!\n", method_hooks[i].functionName, physical);
+		if (DEBUG_LOG_DYN)
+			log_printf("%s physical is located at %08X!\n", method_hooks[functionIndex].functionName, physical);
 
-		*(volatile unsigned int *) (call_addr) = (unsigned int) (space) - CODE_RW_BASE_OFFSET;
-
+		*(volatile unsigned int *) (callAddress) = (unsigned int) (space) - CODE_RW_BASE_OFFSET;
 
 		SC0x25_KernelCopyData((u32) space, physical, 4);
 		space++;
 
 		//Only works if skip_instr == 1
-		if (skip_instr == 1) {
-			// fill the restore instruction section
-			method_hooks[i].realAddr = real_addr;
-			method_hooks[i].restoreInstruction = *(space - 1);
-			if (DEBUG_LOG_DYN)log_printf("method_hooks[i].realAddr = %08X!\n", method_hooks[i].realAddr);
-			if (DEBUG_LOG_DYN)
-				log_printf("method_hooks[i].restoreInstruction = %08X!\n", method_hooks[i].restoreInstruction);
-		} else {
-			log_printf("Error. Can't save %s for restoring!\n", method_hooks[i].functionName);
-		}
+		method_hooks[functionIndex].realAddress = realAddress;
+		method_hooks[functionIndex].restoreInstruction = *(space - 1);
+		if (DEBUG_LOG_DYN)log_printf("method_hooks[i].realAddr = %08X!\n", method_hooks[functionIndex].realAddress);
+		if (DEBUG_LOG_DYN)
+			log_printf("method_hooks[i].restoreInstruction = %08X!\n", method_hooks[functionIndex].restoreInstruction);
 
 		//adding jump to real function thx @ dimok for the assembler code
 		/*
@@ -112,9 +102,9 @@ void PatchInvidualMethodHooks(hooks_magic_t method_hooks[], int hook_information
 			4e 80 04 20     bctr*/
 		*space = 0x9061FFE0;
 		space++;
-		*space = 0x3C600000 | (((real_addr + (skip_instr * 4)) >> 16) & 0x0000FFFF); // lis r3, real_addr@h
+		*space = 0x3C600000 | (((realAddress + (skipInstructionLength * 4)) >> 16) & 0x0000FFFF); // lis r3, real_addr@h
 		space++;
-		*space = 0x60630000 | ((real_addr + (skip_instr * 4)) & 0x0000ffff); // ori r3, r3, real_addr@l
+		*space = 0x60630000 | ((realAddress + (skipInstructionLength * 4)) & 0x0000ffff); // ori r3, r3, real_addr@l
 		space++;
 		*space = 0x7C6903A6; // mtctr   r3
 		space++;
@@ -122,217 +112,253 @@ void PatchInvidualMethodHooks(hooks_magic_t method_hooks[], int hook_information
 		space++;
 		*space = 0x4E800420; // bctr
 		space++;
-		DCFlushRange((void *) (space - instr_len), flush_len);
-		ICInvalidateRange((unsigned char *) (space - instr_len), flush_len);
+		DCFlushRange((void *) (space - instructionLength), flush_len);
+		ICInvalidateRange((unsigned char *) (space - instructionLength), flush_len);
 
 		//setting jump back
-		unsigned int replace_instr = 0x48000002 | (repl_addr & 0x03fffffc);
+		unsigned int replace_instr = 0x48000002 | (replaceAddress & 0x03fffffc);
 		DCFlushRange(&replace_instr, 4);
 
 		SC0x25_KernelCopyData(physical, (u32) OSEffectiveToPhysical(&replace_instr), 4);
-		ICInvalidateRange((void *) (real_addr), 4);
+		ICInvalidateRange((void *) (realAddress), 4);
 
-		method_hooks[i].alreadyPatched = 1;
+		method_hooks[functionIndex].alreadyPatched = 1;
 		log_printf("done!\n");
-
 	}
+
 	log_print("Done with patching given functions!\n");
 }
 
-/* ****************************************************************** */
-/*                  RESTORE ORIGINAL INSTRUCTIONS                     */
-/* ****************************************************************** */
-void RestoreInvidualInstructions(hooks_magic_t method_hooks[], int hook_information_size) {
+void restoreIndividualInstructions(FunctionHook *method_hooks, int hook_information_size) {
 	log_printf("Restoring given functions!\n");
 	int method_hooks_count = hook_information_size;
-	for (int i = 0; i < method_hooks_count; i++) {
-		log_printf("Restoring %s... ", method_hooks[i].functionName);
-		if (method_hooks[i].restoreInstruction == 0 || method_hooks[i].realAddr == 0) {
+	for (int functionIndex = 0; functionIndex < method_hooks_count; functionIndex++) {
+		log_printf("Restoring %s... ", method_hooks[functionIndex].functionName);
+		if (method_hooks[functionIndex].restoreInstruction == 0 || method_hooks[functionIndex].realAddress == 0) {
 			log_printf("I dont have the information for the restore =( skip\n");
 			continue;
 		}
 
-		unsigned int real_addr = GetAddressOfFunction(method_hooks[i].functionName, method_hooks[i].library);
+		unsigned int realAddress = getFunctionAddress(method_hooks[functionIndex].library,
+													  method_hooks[functionIndex].functionName);
 
-		if (!real_addr) {
-			log_printf("OSDynLoad_FindExport failed for %s\n", method_hooks[i].functionName);
+		if (!realAddress) {
+			log_printf("OSDynLoad_FindExport failed for %s\n", method_hooks[functionIndex].functionName);
 			continue;
 		}
 
-		u32 physical = (u32) OSEffectiveToPhysical((void *) real_addr);
+		u32 physical = (u32) OSEffectiveToPhysical((void *) realAddress);
 		if (!physical) {
 			log_printf("Something is wrong with the physical address\n");
 			continue;
 		}
 
-		if (isDynamicFunction(physical)) {
-			log_printf("Its a dynamic function. We don't need to restore it!\n", method_hooks[i].functionName);
+		if (isDynamicFunction((unsigned int) physical)) {
+			log_printf("Its a dynamic function. We don't need to restore it!\n",
+					   method_hooks[functionIndex].functionName);
 		} else {
 			physical = (u32) OSEffectiveToPhysical(
-					(void *) method_hooks[i].realAddr); //When its an static function, we need to use the old location
+					(void *) method_hooks[functionIndex].realAddress); //When its an static function, we need to use the old location
 			if (DEBUG_LOG_DYN)
-				log_printf("Restoring %08X to %08X\n", (u32) method_hooks[i].restoreInstruction, physical);
-			SC0x25_KernelCopyData(physical, (u32) & method_hooks[i].restoreInstruction, 4);
-			if (DEBUG_LOG_DYN)log_printf("ICInvalidateRange %08X\n", (void *) method_hooks[i].realAddr);
-			ICInvalidateRange((void *) method_hooks[i].realAddr, 4);
+				log_printf("Restoring %08X to %08X\n", (u32) method_hooks[functionIndex].restoreInstruction, physical);
+			SC0x25_KernelCopyData(physical, (u32) & method_hooks[functionIndex].restoreInstruction, 4);
+			if (DEBUG_LOG_DYN)log_printf("ICInvalidateRange %08X\n", (void *) method_hooks[functionIndex].realAddress);
+			ICInvalidateRange((void *) method_hooks[functionIndex].realAddress, 4);
 			log_printf("done\n");
 		}
-		method_hooks[i].alreadyPatched = 0; // In case a
+		method_hooks[functionIndex].alreadyPatched = 0; // In case a
 	}
 
 	KernelRestoreInstructions();
 	log_print("Done with restoring given functions!\n");
 }
 
-int isDynamicFunction(unsigned int physicalAddress) {
-	if ((physicalAddress & 0x80000000) == 0x80000000) {
-		return 1;
-	}
-	return 0;
+bool isDynamicFunction(unsigned int physicalAddress) {
+	return (physicalAddress & 0x80000000) == 0x80000000;
 }
 
-unsigned int GetAddressOfFunction(const char *functionName, unsigned int library) {
-	unsigned int real_addr = 0;
+unsigned int getRPLHandle(int library, const char *functionName) {
+	unsigned int rplHandle = 0;
+
+	switch (library) {
+		case LIB_CORE_INIT:
+			if (DEBUG_LOG_DYN)log_printf("FindExport of %s! From LIB_CORE_INIT\n", functionName);
+			if (coreinit_handle == 0) {
+				log_print("LIB_CORE_INIT not acquired\n");
+				return 0;
+			}
+			rplHandle = coreinit_handle;
+			break;
+
+		case LIB_NSYSNET:
+			if (DEBUG_LOG_DYN)log_printf("FindExport of %s! From LIB_NSYSNET\n", functionName);
+			if (nsysnet_handle == 0) {
+				log_print("LIB_NSYSNET not acquired\n");
+				return 0;
+			}
+			rplHandle = nsysnet_handle;
+			break;
+
+		case LIB_GX2:
+			if (DEBUG_LOG_DYN)log_printf("FindExport of %s! From LIB_GX2\n", functionName);
+			if (gx2_handle == 0) {
+				log_print("LIB_GX2 not acquired\n");
+				return 0;
+			}
+			rplHandle = gx2_handle;
+			break;
+
+		case LIB_AOC:
+			if (DEBUG_LOG_DYN)log_printf("FindExport of %s! From LIB_AOC\n", functionName);
+			if (aoc_handle == 0) {
+				log_print("LIB_AOC not acquired\n");
+				return 0;
+			}
+			rplHandle = aoc_handle;
+			break;
+
+		case LIB_AX:
+			if (DEBUG_LOG_DYN)log_printf("FindExport of %s! From LIB_AX\n", functionName);
+			if (sound_handle == 0) {
+				log_print("LIB_AX not acquired\n");
+				return 0;
+			}
+			rplHandle = sound_handle;
+			break;
+
+		case LIB_FS:
+			if (DEBUG_LOG_DYN)log_printf("FindExport of %s! From LIB_FS\n", functionName);
+			if (coreinit_handle == 0) {
+				log_print("LIB_FS not acquired\n");
+				return 0;
+			}
+			rplHandle = coreinit_handle;
+			break;
+
+		case LIB_OS:
+			if (DEBUG_LOG_DYN)log_printf("FindExport of %s! From LIB_OS\n", functionName);
+			if (coreinit_handle == 0) {
+				log_print("LIB_OS not acquired\n");
+				return 0;
+			}
+			rplHandle = coreinit_handle;
+			break;
+
+		case LIB_PADSCORE:
+			if (DEBUG_LOG_DYN)log_printf("FindExport of %s! From LIB_PADSCORE\n", functionName);
+			if (padscore_handle == 0) {
+				log_print("LIB_PADSCORE not acquired\n");
+				return 0;
+			}
+			rplHandle = padscore_handle;
+			break;
+
+		case LIB_SOCKET:
+			if (DEBUG_LOG_DYN)log_printf("FindExport of %s! From LIB_SOCKET\n", functionName);
+			if (nsysnet_handle == 0) {
+				log_print("LIB_SOCKET not acquired\n");
+				return 0;
+			}
+			rplHandle = nsysnet_handle;
+			break;
+
+		case LIB_SYS:
+			if (DEBUG_LOG_DYN)log_printf("FindExport of %s! From LIB_SYS\n", functionName);
+			if (sysapp_handle == 0) {
+				log_print("LIB_SYS not acquired\n");
+				return 0;
+			}
+			rplHandle = sysapp_handle;
+			break;
+
+		case LIB_VPAD:
+			if (DEBUG_LOG_DYN)log_printf("FindExport of %s! From LIB_VPAD\n", functionName);
+			if (vpad_handle == 0) {
+				log_print("LIB_VPAD not acquired\n");
+				return 0;
+			}
+			rplHandle = vpad_handle;
+			break;
+
+		case LIB_NN_ACP:
+			if (DEBUG_LOG_DYN)log_printf("FindExport of %s! From LIB_NN_ACP\n", functionName);
+			if (acp_handle == 0) {
+				log_print("LIB_NN_ACP not acquired\n");
+				return 0;
+			}
+			rplHandle = acp_handle;
+			break;
+
+		case LIB_SYSHID:
+			if (DEBUG_LOG_DYN)log_printf("FindExport of %s! From LIB_SYSHID\n", functionName);
+			if (syshid_handle == 0) {
+				log_print("LIB_SYSHID not acquired\n");
+				return 0;
+			}
+			rplHandle = syshid_handle;
+			break;
+
+		case LIB_VPADBASE:
+			if (DEBUG_LOG_DYN)log_printf("FindExport of %s! From LIB_VPADBASE\n", functionName);
+			if (vpadbase_handle == 0) {
+				log_print("LIB_VPADBASE not acquired\n");
+				return 0;
+			}
+			rplHandle = vpadbase_handle;
+			break;
+
+		default:
+			char messageBuffer[50];
+			__os_snprintf(messageBuffer, 50, "Unhandled library %i", library);
+			OSFatal(messageBuffer);
+	}
+
+	return rplHandle;
+}
+
+unsigned int getFunctionAddress(unsigned int library, const char *functionName) {
+	unsigned int realAddress = 0;
 
 	if (strcmp(functionName, "OSDynLoad_Acquire") == 0) {
-		memcpy(&real_addr, &OSDynLoad_Acquire, 4);
-		return real_addr;
+		memcpy(&realAddress, &OSDynLoad_Acquire, 4);
+		return realAddress;
 	} else if (strcmp(functionName, "LiWaitOneChunk") == 0) {
-		real_addr = (unsigned int) addr_LiWaitOneChunk;
-		return real_addr;
+		realAddress = (unsigned int) addr_LiWaitOneChunk;
+		return realAddress;
 	} else if (strcmp(functionName, "LiBounceOneChunk") == 0) {
 		//! not required on firmwares above 3.1.0
 		if (OS_FIRMWARE >= 400)
 			return 0;
 
 		unsigned int addr_LiBounceOneChunk = 0x010003A0;
-		real_addr = addr_LiBounceOneChunk;
-		return real_addr;
+		realAddress = addr_LiBounceOneChunk;
+		return realAddress;
 	}
 
-	unsigned int rpl_handle = 0;
-	if (library == LIB_CORE_INIT) {
-		if (DEBUG_LOG_DYN)log_printf("FindExport of %s! From LIB_CORE_INIT\n", functionName);
-		if (coreinit_handle == 0) {
-			log_print("LIB_CORE_INIT not aquired\n");
-			return 0;
-		}
-		rpl_handle = coreinit_handle;
-	} else if (library == LIB_NSYSNET) {
-		if (DEBUG_LOG_DYN)log_printf("FindExport of %s! From LIB_NSYSNET\n", functionName);
-		if (nsysnet_handle == 0) {
-			log_print("LIB_NSYSNET not aquired\n");
-			return 0;
-		}
-		rpl_handle = nsysnet_handle;
-	} else if (library == LIB_GX2) {
-		if (DEBUG_LOG_DYN)log_printf("FindExport of %s! From LIB_GX2\n", functionName);
-		if (gx2_handle == 0) {
-			log_print("LIB_GX2 not aquired\n");
-			return 0;
-		}
-		rpl_handle = gx2_handle;
-	} else if (library == LIB_AOC) {
-		if (DEBUG_LOG_DYN)log_printf("FindExport of %s! From LIB_AOC\n", functionName);
-		if (aoc_handle == 0) {
-			log_print("LIB_AOC not aquired\n");
-			return 0;
-		}
-		rpl_handle = aoc_handle;
-	} else if (library == LIB_AX) {
-		if (DEBUG_LOG_DYN)log_printf("FindExport of %s! From LIB_AX\n", functionName);
-		if (sound_handle == 0) {
-			log_print("LIB_AX not aquired\n");
-			return 0;
-		}
-		rpl_handle = sound_handle;
-	} else if (library == LIB_FS) {
-		if (DEBUG_LOG_DYN)log_printf("FindExport of %s! From LIB_FS\n", functionName);
-		if (coreinit_handle == 0) {
-			log_print("LIB_FS not aquired\n");
-			return 0;
-		}
-		rpl_handle = coreinit_handle;
-	} else if (library == LIB_OS) {
-		if (DEBUG_LOG_DYN)log_printf("FindExport of %s! From LIB_OS\n", functionName);
-		if (coreinit_handle == 0) {
-			log_print("LIB_OS not aquired\n");
-			return 0;
-		}
-		rpl_handle = coreinit_handle;
-	} else if (library == LIB_PADSCORE) {
-		if (DEBUG_LOG_DYN)log_printf("FindExport of %s! From LIB_PADSCORE\n", functionName);
-		if (padscore_handle == 0) {
-			log_print("LIB_PADSCORE not aquired\n");
-			return 0;
-		}
-		rpl_handle = padscore_handle;
-	} else if (library == LIB_SOCKET) {
-		if (DEBUG_LOG_DYN)log_printf("FindExport of %s! From LIB_SOCKET\n", functionName);
-		if (nsysnet_handle == 0) {
-			log_print("LIB_SOCKET not aquired\n");
-			return 0;
-		}
-		rpl_handle = nsysnet_handle;
-	} else if (library == LIB_SYS) {
-		if (DEBUG_LOG_DYN)log_printf("FindExport of %s! From LIB_SYS\n", functionName);
-		if (sysapp_handle == 0) {
-			log_print("LIB_SYS not aquired\n");
-			return 0;
-		}
-		rpl_handle = sysapp_handle;
-	} else if (library == LIB_VPAD) {
-		if (DEBUG_LOG_DYN)log_printf("FindExport of %s! From LIB_VPAD\n", functionName);
-		if (vpad_handle == 0) {
-			log_print("LIB_VPAD not aquired\n");
-			return 0;
-		}
-		rpl_handle = vpad_handle;
-	} else if (library == LIB_NN_ACP) {
-		if (DEBUG_LOG_DYN)log_printf("FindExport of %s! From LIB_NN_ACP\n", functionName);
-		if (acp_handle == 0) {
-			log_print("LIB_NN_ACP not aquired\n");
-			return 0;
-		}
-		rpl_handle = acp_handle;
-	} else if (library == LIB_SYSHID) {
-		if (DEBUG_LOG_DYN)log_printf("FindExport of %s! From LIB_SYSHID\n", functionName);
-		if (syshid_handle == 0) {
-			log_print("LIB_SYSHID not aquired\n");
-			return 0;
-		}
-		rpl_handle = syshid_handle;
-	} else if (library == LIB_VPADBASE) {
-		if (DEBUG_LOG_DYN)log_printf("FindExport of %s! From LIB_VPADBASE\n", functionName);
-		if (vpadbase_handle == 0) {
-			log_print("LIB_VPADBASE not aquired\n");
-			return 0;
-		}
-		rpl_handle = vpadbase_handle;
-	}
+	unsigned int rpl_handle = getRPLHandle(library, functionName);
 
 	if (!rpl_handle) {
 		log_printf("Failed to find the RPL handle for %s\n", functionName);
 		return 0;
 	}
 
-	OSDynLoad_FindExport(rpl_handle, 0, functionName, &real_addr);
+	OSDynLoad_FindExport((u32) rpl_handle, 0, functionName, &realAddress);
 
-	if (!real_addr) {
+	if (!realAddress) {
 		log_printf("OSDynLoad_FindExport failed for %s\n", functionName);
 		return 0;
 	}
 
-	if ((u32)(*(volatile unsigned int *) (real_addr) & 0x48000002) == 0x48000000) {
-		unsigned int address_diff = (u32)(*(volatile unsigned int *) (real_addr) & 0x03FFFFFC);
+	if ((u32)(*(volatile unsigned int *) (realAddress) & 0x48000002) == 0x48000000) {
+		unsigned int address_diff = (u32)(*(volatile unsigned int *) (realAddress) & 0x03FFFFFC);
 		if ((address_diff & 0x03000000) == 0x03000000) {
 			address_diff |= 0xFC000000;
 		}
-		real_addr += (int) address_diff;
-		if ((u32)(*(volatile unsigned int *) (real_addr) & 0x48000002) == 0x48000000) {
+		realAddress += (int) address_diff;
+		if ((u32)(*(volatile unsigned int *) (realAddress) & 0x48000002) == 0x48000000) {
 			return 0;
 		}
 	}
 
-	return real_addr;
+	return realAddress;
 }

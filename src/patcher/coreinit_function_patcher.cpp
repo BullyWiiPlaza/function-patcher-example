@@ -19,18 +19,16 @@
 
 #include "../utils/logger.h"
 
-DECL(void, _Exit, void) {
+declareFunctionHook(void, _Exit, void) {
 	log_print("Application closed\n");
 	real__Exit();
 }
 
-hooks_magic_t method_hooks_coreinit[] __attribute__((section(".data"))) = {
-		MAKE_MAGIC(_Exit, LIB_CORE_INIT, STATIC_FUNCTION),
+FunctionHook method_hooks_coreinit[] __attribute__((section(".data"))) = {
+		makeFunctionHook(_Exit, LIB_CORE_INIT, STATIC_FUNCTION),
 };
 
-u32 method_hooks_size_coreinit __attribute__((section(".data"))) =
-		sizeof(method_hooks_coreinit) / sizeof(hooks_magic_t);
+u32 method_hooks_size_coreinit __attribute__((section(".data"))) = sizeof(method_hooks_coreinit) / sizeof(FunctionHook);
 
 //! buffer to store our instructions needed for our replacements
-volatile unsigned int method_calls_coreinit[sizeof(method_hooks_coreinit) / sizeof(hooks_magic_t) *
-											FUNCTION_PATCHER_METHOD_STORE_SIZE] __attribute__((section(".data")));
+volatile unsigned int method_calls_coreinit[sizeof(method_hooks_coreinit) / sizeof(FunctionHook) * FUNCTION_PATCHER_METHOD_STORE_SIZE] __attribute__((section(".data")));
